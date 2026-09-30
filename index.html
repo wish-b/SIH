@@ -656,15 +656,39 @@
          */
 
         // ==========================================
-        // 0. API & UGV SYSTEM CONFIGURATION
+        // 0. API & UGV SYSTEM CONFIGURATION (LOADED FROM .env)
         // ==========================================
         const CONFIG = {
-            API_KEY: 'AIzaSyByK_ffhMw2CUgxDZyjCNet5HXxiIKV3CM',
-            GOOGLE_MAPS_API_KEY: 'AIzaSyByK_ffhMw2CUgxDZyjCNet5HXxiIKV3CM',
-            GEMINI_API_KEY: 'AIzaSyByK_ffhMw2CUgxDZyjCNet5HXxiIKV3CM',
+            API_KEY: '',
+            GOOGLE_MAPS_API_KEY: '',
+            GEMINI_API_KEY: '',
             UGV_CALLSIGN: 'INNOVEXA-UGV-01',
             BASE_COORDS: { lat: 28.4715, lng: 77.4878 }
         };
+
+        async function loadEnvConfig() {
+            try {
+                const res = await fetch('./.env', { cache: 'no-store' });
+                if (!res.ok) return;
+                const text = await res.text();
+                text.split(/\r?\n/).forEach(line => {
+                    const trimmed = line.trim();
+                    if (!trimmed || trimmed.startsWith('#')) return;
+                    const eqIdx = trimmed.indexOf('=');
+                    if (eqIdx === -1) return;
+                    const key = trimmed.slice(0, eqIdx).trim();
+                    const val = trimmed.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+                    if (key === 'API_KEY') CONFIG.API_KEY = val;
+                    else if (key === 'GOOGLE_MAPS_API_KEY') CONFIG.GOOGLE_MAPS_API_KEY = val;
+                    else if (key === 'GEMINI_API_KEY') CONFIG.GEMINI_API_KEY = val;
+                    else if (key === 'UGV_CALLSIGN' && val) CONFIG.UGV_CALLSIGN = val;
+                    else if (key === 'BASE_LAT' && !isNaN(parseFloat(val))) CONFIG.BASE_COORDS.lat = parseFloat(val);
+                    else if (key === 'BASE_LNG' && !isNaN(parseFloat(val))) CONFIG.BASE_COORDS.lng = parseFloat(val);
+                });
+            } catch (err) {
+                // Fallback when opened directly via file:// without a local HTTP server
+            }
+        }
 
         // ==========================================
         // 1. GLOBAL STATE CONFIGURATION
@@ -3177,17 +3201,18 @@
                 zoomControl: true
             });
 
-            // Official Google Maps Tile Servers (Road, Hybrid Satellite, Terrain) + API Key parameter
+            // Official Google Maps Tile Servers (Road, Hybrid Satellite, Terrain) + optional API Key from .env
+            const keyParam = CONFIG.GOOGLE_MAPS_API_KEY ? `&key=${encodeURIComponent(CONFIG.GOOGLE_MAPS_API_KEY)}` : '';
             mapTileLayers = {
-                road: L.tileLayer(`https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=${CONFIG.GOOGLE_MAPS_API_KEY}`, {
+                road: L.tileLayer(`https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}${keyParam}`, {
                     maxZoom: 20,
                     attribution: 'Google Maps • ' + CONFIG.UGV_CALLSIGN
                 }),
-                sat: L.tileLayer(`https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&key=${CONFIG.GOOGLE_MAPS_API_KEY}`, {
+                sat: L.tileLayer(`https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}${keyParam}`, {
                     maxZoom: 20,
                     attribution: 'Google Satellite Hybrid • ' + CONFIG.UGV_CALLSIGN
                 }),
-                terrain: L.tileLayer(`https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&key=${CONFIG.GOOGLE_MAPS_API_KEY}`, {
+                terrain: L.tileLayer(`https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}${keyParam}`, {
                     maxZoom: 20,
                     attribution: 'Google Terrain • ' + CONFIG.UGV_CALLSIGN
                 })
@@ -4474,7 +4499,8 @@
             if (leafletMap) leafletMap.invalidateSize();
         }
 
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
+            await loadEnvConfig();
             initThreeScene();
             setupUIEventListeners();
             initGoogleMapNavigation();
